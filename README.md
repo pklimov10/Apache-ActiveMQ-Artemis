@@ -47,29 +47,27 @@ HAProxy (Backup) принимает запросы и перенаправляе
 
 Схема взаимодействия компонентов
 
-graph TD
-A[WildFly (Client/Producer)] --> B[HAProxy (Primary)]
-B --> C[HAProxy (Backup)]
-C --> D[Apache ActiveMQ Artemis (Broker 1)]
-C --> E[Apache ActiveMQ Artemis (Broker 2)]
-B --> D
-B --> E
-
-@startuml
-actor WildFly as W
-actor "HAProxy (Primary)" as P
-actor "HAProxy (Backup)" as B
-actor "Apache ActiveMQ Artemis (Broker 1)" as B1
-actor "Apache ActiveMQ Artemis (Broker 2)" as B2
-
-W --> P : Sends requests
-P --> B : Forwards requests
-B --> B1 : Sends to Broker 1
-B --> B2 : Sends to Broker 2
-P --> B1 : Sends to Broker 1
-P --> B2 : Sends to Broker 2
-@enduml
-
+```mermaid
+sequenceDiagram
+    actor W as WildFly
+    actor P as "HAProxy (Primary)"
+    actor B as "HAProxy (Backup)"
+    actor B1 as "Apache ActiveMQ Artemis (Broker 1)"
+    actor B2 as "Apache ActiveMQ Artemis (Broker 2)"
+    
+    W->>P: Sends requests
+    P->>B: Forwards requests
+    B->>B1: Sends to Broker 1
+    B->>B2: Sends to Broker 2
+    P->>B1: Sends to Broker 1
+    P->>B2: Sends to Broker 2
+```
+```mermaid
+erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains
+    CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
+```
 - **A (WildFly)** — это клиент или продюсер, который подключается к балансировщику HAProxy.
 - **B (Primary HAProxy)** — основной балансировщик, который направляет запросы на брокеры ActiveMQ Artemis.
 - **C (Backup HAProxy)** — резервный балансировщик, который берет на себя трафик в случае сбоя основного.
