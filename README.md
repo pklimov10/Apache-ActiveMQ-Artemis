@@ -62,12 +62,7 @@ sequenceDiagram
     P->>B1: Sends to Broker 1
     P->>B2: Sends to Broker 2
 ```
-```mermaid
-erDiagram
-    CUSTOMER ||--o{ ORDER : places
-    ORDER ||--|{ LINE-ITEM : contains
-    CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
-```
+
 - **A (WildFly)** — это клиент или продюсер, который подключается к балансировщику HAProxy.
 - **B (Primary HAProxy)** — основной балансировщик, который направляет запросы на брокеры ActiveMQ Artemis.
 - **C (Backup HAProxy)** — резервный балансировщик, который берет на себя трафик в случае сбоя основного.
