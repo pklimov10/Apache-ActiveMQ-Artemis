@@ -1,0 +1,94 @@
+<configuration xmlns="urn:activemq" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:schemaLocation="urn:activemq /schema/artemis-configuration.xsd">
+    <core xmlns="urn:activemq:core">
+        <!-- Основные настройки -->
+        <name>broker2</name>
+        <persistence-enabled>true</persistence-enabled>
+
+        <!-- Директории -->
+        <paging-directory>data/paging</paging-directory>
+        <bindings-directory>data/bindings</bindings-directory>
+        <journal-directory>data/journal</journal-directory>
+        <large-messages-directory>data/large-messages</large-messages-directory>
+
+        <!-- Настройки журнала -->
+        <journal-type>ASYNCIO</journal-type>
+        <journal-buffer-timeout>16000</journal-buffer-timeout>
+        <journal-file-size>10M</journal-file-size>
+        <journal-min-files>2</journal-min-files>
+        <journal-pool-files>10</journal-pool-files>
+        <journal-max-io>4096</journal-max-io>
+
+        <!-- Коннекторы для связи между брокерами -->
+        <connectors>
+            <connector name="broker1-connector">tcp://10.7.39.9:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+            <connector name="broker2-connector">tcp://10.7.39.12:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+        </connectors>
+
+        <!-- Акцепторы -->
+        <acceptors>
+            <acceptor name="artemis">tcp://10.7.39.12:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576;protocols=CORE,AMQP,STOMP,HORNETQ,MQTT,OPENWIRE;useEpoll=true;tcpKeepAlive=true</acceptor>
+            <acceptor name="amqp">tcp://10.7.39.12:5672?protocols=AMQP;useEpoll=true</acceptor>
+            <acceptor name="stomp">tcp://10.7.39.12:61613?protocols=STOMP;useEpoll=true</acceptor>
+            <acceptor name="mqtt">tcp://10.7.39.12:1883?protocols=MQTT;useEpoll=true</acceptor>
+        </acceptors>
+
+        <!-- Настройка кластера для режима active-active -->
+        <cluster-connections>
+            <cluster-connection name="my-cluster">
+                <address>jms,#</address>
+                <connector-ref>broker2-connector</connector-ref>
+                <retry-interval>500</retry-interval>
+                <use-duplicate-detection>true</use-duplicate-detection>
+                <message-load-balancing>STRICT</message-load-balancing>
+                <max-hops>1</max-hops>
+                <confirmation-window-size>1048576</confirmation-window-size>
+                <static-connectors>
+                    <connector-ref>broker2-connector</connector-ref>
+                </static-connectors>
+            </cluster-connection>
+        </cluster-connections>
+
+        <!-- Безопасность -->
+        <security-settings>
+            <security-setting match="#">
+                <permission type="createNonDurableQueue" roles="amq"/>
+                <permission type="deleteNonDurableQueue" roles="amq"/>
+                <permission type="createDurableQueue" roles="amq"/>
+                <permission type="deleteDurableQueue" roles="amq"/>
+                <permission type="createAddress" roles="amq"/>
+                <permission type="deleteAddress" roles="amq"/>
+                <permission type="consume" roles="amq"/>
+                <permission type="browse" roles="amq"/>
+                <permission type="send" roles="amq"/>
+                <permission type="manage" roles="amq"/>
+            </security-setting>
+        </security-settings>
+
+        <!-- Настройки адресов -->
+        <address-settings>
+            <!-- Настройки по умолчанию -->
+            <address-setting match="#">
+                <dead-letter-address>DLQ</dead-letter-address>
+                <expiry-address>ExpiryQueue</expiry-address>
+                <redelivery-delay>0</redelivery-delay>
+                <max-size-bytes>-1</max-size-bytes>
+                <message-counter-history-day-limit>10</message-counter-history-day-limit>
+                <address-full-policy>PAGE</address-full-policy>
+                <auto-create-queues>true</auto-create-queues>
+                <auto-create-addresses>true</auto-create-addresses>
+                <auto-create-jms-queues>true</auto-create-jms-queues>
+                <auto-create-jms-topics>true</auto-create-jms-topics>
+                <redistribution-delay>0</redistribution-delay>
+            </address-setting>
+
+            <!-- Специфичные настройки для очередей -->
+            <address-setting match="jms.queue.#">
+                <redelivery-delay>60000</redelivery-delay>
+                <max-delivery-attempts>3</max-delivery-attempts>
+                <redelivery-delay-multiplier>2.0</redelivery-delay-multiplier>
+            </address-setting>
+        </address-settings>
+
+    </core>
+</configuration>
