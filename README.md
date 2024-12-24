@@ -87,107 +87,163 @@ sequenceDiagram
 
 ### Изменения в конфигурации Apache ActiveMQ Artemis
 
-#### Настройки кластеризации
-```<cluster-connections>
+### Настройки кластеризации 
+#### В секции connectors добавим все три узла:
+```
+<connectors>
+    <connector name="master1">tcp://tst-sed-mq301:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master2">tcp://tst-sed-mq302:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master3">tcp://tst-sed-mq303:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+</connectors>
+```
+####  Изменим cluster-connections для работы со всеми узлами:
+```
+     <cluster-connections>
     <cluster-connection name="my-cluster">
         <address>jms,#</address>
-        <connector-ref>broker2-connector</connector-ref>
-        <message-load-balancing>STRICT</message-load-balancing>
+        <connector-ref>master1</connector-ref>
+        <retry-interval>500</retry-interval>
+        <use-duplicate-detection>true</use-duplicate-detection>
+        <message-load-balancing>ON_DEMAND</message-load-balancing>
         <max-hops>1</max-hops>
+        <confirmation-window-size>1048576</confirmation-window-size>
+        <static-connectors>
+            <connector-ref>master2</connector-ref>
+            <connector-ref>master3</connector-ref>
+        </static-connectors>
+    </cluster-connection>
+</cluster-connections>
+
+```
+
+#### Полностью удалить секцию ha-policy, так как она не нужна в master-master конфигурации:
+
+```
+ <!-- Удалить полностью этот блок
+<ha-policy>
+    <replication>
+        <master>
+            <check-for-live-server>true</check-for-live-server>
+        </master>
+    </replication>
+</ha-policy>
+-->
+
+```
+
+#### В acceptors добавить tcpKeepAlive:
+
+```
+<acceptor name="artemis">tcp://10.21.39.83:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576;amqpMinLargeMessageSize=102400;protocols=CORE,AMQP,STOMP,HORNETQ,MQTT,OPENWIRE;useEpoll=true;amqpCredits=1000;amqpLowCredits=300;amqpDuplicateDetection=true;tcpKeepAlive=true</acceptor>
+
+```
+####  В address-settings добавить redistribution-delay для # паттерна:
+
+
+```
+<address-setting match="#">
+    <!-- Существующие настройки остаются -->
+    <redistribution-delay>0</redistribution-delay>
+</address-setting>
+```
+
+## Для остальных двух узлов нужно будет:
+
+- Изменить <name> на соответствующие имена узлов
+- Изменить IP-адреса в acceptors
+- Изменить connector-ref в cluster-connection (для второго узла на master2, для третьего на master3)
+- Соответственно изменить static-connectors (включать два других узла)
+- Все остальные настройки (security-settings, address-settings, addresses, diverts) остаются без изменений, так как они должны быть идентичны на всех узлах кластера.
+
+**Обратите внимание на важные особенности:**
+
+- cluster-user и cluster-password должны быть одинаковыми на всех узлах
+- global-max-size (40Gb) будет применяться к каждому узлу отдельно
+- Все очереди и топики будут автоматически синхронизироваться между узлами
+- Балансировка ON_DEMAND обеспечит оптимальное распределение нагрузки
+
+**Виды балансировки:**
+- STRICT - строгое распределение сообщений поровну между брокерами
+- ON_DEMAND (рекомендуется для master-master) - сообщения перенаправляются только когда потребитель готов их принять
+- OFF - балансировка отключена, сообщения остаются на исходном брокере
+# Конфигурация для трех узлов кластера
+
+## Узел 1 (master1)
+```xml
+<connectors>
+    <connector name="master1">tcp://tst-sed-mq301:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master2">tcp://tst-sed-mq302:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master3">tcp://tst-sed-mq303:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+</connectors>
+
+<cluster-connections>
+    <cluster-connection name="my-cluster">
+        <address>jms,#</address>
+        <connector-ref>master1</connector-ref>
+        <retry-interval>500</retry-interval>
+        <use-duplicate-detection>true</use-duplicate-detection>
+        <message-load-balancing>ON_DEMAND</message-load-balancing>
+        <max-hops>1</max-hops>
+        <confirmation-window-size>1048576</confirmation-window-size>
+        <static-connectors>
+            <connector-ref>master1</connector-ref>
+            <connector-ref>master2</connector-ref>
+            <connector-ref>master3</connector-ref>
+        </static-connectors>
     </cluster-connection>
 </cluster-connections>
 ```
-```
-      <!-- Коннекторы для связи между брокерами -->
-      <connectors>
-         <connector name="broker1-connector">tcp://10.7.39.9:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
-         <connector name="broker2-connector">tcp://10.7.39.12:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
-      </connectors>
 
-```
-```
-     <!-- Акцепторы -->
-      <acceptors>
-         <acceptor name="artemis">tcp://10.7.39.12:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576;protocols=CORE,AMQP,STOMP,HORNETQ,MQTT,OPENWIRE;useEpoll=true;tcpKeepAlive=true</acceptor>
-         <acceptor name="amqp">tcp://10.7.39.12:5672?protocols=AMQP;useEpoll=true</acceptor>
-         <acceptor name="stomp">tcp://10.7.39.12:61613?protocols=STOMP;useEpoll=true</acceptor>
-         <acceptor name="mqtt">tcp://10.7.39.12:1883?protocols=MQTT;useEpoll=true</acceptor>
-      </acceptors>
-
-```
-
-```
-      <!-- Настройка кластера для режима active-active -->
-      <cluster-connections>
-         <cluster-connection name="my-cluster">
-            <address>jms,#</address>
-            <connector-ref>broker2-connector</connector-ref>
-            <retry-interval>500</retry-interval>
-            <use-duplicate-detection>true</use-duplicate-detection>
-            <message-load-balancing>STRICT</message-load-balancing>
-            <max-hops>1</max-hops>
-            <confirmation-window-size>1048576</confirmation-window-size>
-            <static-connectors>
-               <connector-ref>broker2-connector</connector-ref>
-            </static-connectors>
-         </cluster-connection>
-      </cluster-connections>
-
-```
-### a. Настройка соединителей (<connectors>):
-
-- На каждом брокере определите соединители для связи с собой и другими брокерами.
-
-- На брокере artemis1 (192.168.1.101):
-
-```<connectors>
-   <connector name="artemis1-connector">tcp://192.168.1.101:61616</connector>
-   <connector name="artemis2-connector">tcp://192.168.1.102:61616</connector>
+## Узел 2 (master2)
+```xml
+<connectors>
+    <connector name="master1">tcp://tst-sed-mq301:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master2">tcp://tst-sed-mq302:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master3">tcp://tst-sed-mq303:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
 </connectors>
-```
 
-
-### На брокере artemis2 (192.168.1.102):
-
-```<connectors>
-   <connector name="artemis1-connector">tcp://192.168.1.101:61616</connector>
-   <connector name="artemis2-connector">tcp://192.168.1.102:61616</connector>
-</connectors>
-```
-
-### b. Настройка акцепторов (<acceptors>):
-
-- Оставьте стандартный акцептор для приема клиентских подключений.
-
-```<acceptors>
-   <acceptor name="netty">tcp://0.0.0.0:61616</acceptor>
-</acceptors>
-```
-
-
-### c. Настройка кластерных соединений (<cluster-connections>):
-
-- Добавьте кластерное соединение, которое объединяет брокеры в кластер.
-
-- На обоих брокерах (artemis1 и artemis2):
-```
 <cluster-connections>
-   <cluster-connection name="my-cluster">
-      <address>jms</address>
-      <connector-ref>artemis1-connector</connector-ref> <!-- Указывается локальный соединитель арбитража -->
-      <retry-interval>1000</retry-interval>
-      <use-duplicate-detection>true</use-duplicate-detection>
-      <message-load-balancing>ON_DEMAND</message-load-balancing>
-      <max-hops>1</max-hops>
-      <static-connectors>
-         <connector-ref>artemis1-connector</connector-ref>
-         <connector-ref>artemis2-connector</connector-ref>
-      </static-connectors>
-   </cluster-connection>
+    <cluster-connection name="my-cluster">
+        <address>jms,#</address>
+        <connector-ref>master2</connector-ref>
+        <retry-interval>500</retry-interval>
+        <use-duplicate-detection>true</use-duplicate-detection>
+        <message-load-balancing>ON_DEMAND</message-load-balancing>
+        <max-hops>1</max-hops>
+        <confirmation-window-size>1048576</confirmation-window-size>
+        <static-connectors>
+            <connector-ref>master1</connector-ref>
+            <connector-ref>master2</connector-ref>
+            <connector-ref>master3</connector-ref>
+        </static-connectors>
+    </cluster-connection>
 </cluster-connections>
 ```
+## Узел 3 (master3)
+```xml
+<connectors>
+    <connector name="master1">tcp://tst-sed-mq301:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master2">tcp://tst-sed-mq302:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+    <connector name="master3">tcp://tst-sed-mq303:61616?tcpSendBufferSize=1048576;tcpReceiveBufferSize=1048576</connector>
+</connectors>
 
-
+<cluster-connections>
+    <cluster-connection name="my-cluster">
+        <address>jms,#</address>
+        <connector-ref>master3</connector-ref>
+        <retry-interval>500</retry-interval>
+        <use-duplicate-detection>true</use-duplicate-detection>
+        <message-load-balancing>ON_DEMAND</message-load-balancing>
+        <max-hops>1</max-hops>
+        <confirmation-window-size>1048576</confirmation-window-size>
+        <static-connectors>
+            <connector-ref>master1</connector-ref>
+            <connector-ref>master2</connector-ref>
+            <connector-ref>master3</connector-ref>
+        </static-connectors>
+    </cluster-connection>
+</cluster-connections>
+```
 ###  Оптимизация производительности
 - **Размер TCP-буфера**: tcpSendBufferSize=1048576
 - **Пулинг журналов**: <journal-pool-files>10</journal-pool-files>
